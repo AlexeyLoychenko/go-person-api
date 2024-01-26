@@ -1,0 +1,61 @@
+version: '3.5'
+services:
+  app:
+    container_name: personapi_app
+    environment:
+      - APP_MODE=containerized
+    build: .
+    ports:
+      - 8080:8080
+    restart: on-failure
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+    networks:
+      - app_network
+
+  db: 
+    image: postgres:12.16
+    container_name: personapi_postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - 5432:5432
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  migrate:
+    image: migrate/migrate:v4.15.2
+    profiles: ["tools"]
+    env_file:
+      - .env
+    volumes:
+      - ./migrations:/migrations
+    entrypoint:
+      [
+        "migrate",
+        "-path",
+        "/migrations",
+        "-database",
+        "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_DOCKER_CONTAINER}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable",
+      ]
+    command: ["up"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
